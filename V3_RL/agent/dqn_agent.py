@@ -25,18 +25,37 @@ class AttentionDQNAgent:
         self.replay_buffer = deque(maxlen=buffer_size)
 
     def act(self, order_vec, stack_vecs, valid_actions_mask):
+        num_stacks = len(stack_vecs)
+
+        # 构造有效动作列表
+        valid_actions = np.where(valid_actions_mask)[0].tolist()
+
+        # 若无合法动作，返回 wait（最后一个动作）
+        if len(valid_actions) == 0:
+            return num_stacks  # wait
+
+        # 探索模式：随机从合法动作中选一个
         if random.random() < self.epsilon:
-            # 随机选择有效动作
-            valid_actions = np.where(valid_actions_mask)[0]
             return random.choice(valid_actions)
 
+        # 利用模式：神经网络输出 Q 值，屏蔽非法动作后选最大值
         self.policy_net.eval()
         with torch.no_grad():
-            scores = self.policy_net(torch.FloatTensor(order_vec).unsqueeze(0),
-                                     torch.FloatTensor(stack_vecs).unsqueeze(0))  # (1, n_stack)
+            scores = self.policy_net(
+                torch.FloatTensor(order_vec).unsqueeze(0),
+                torch.FloatTensor(stack_vecs).unsqueeze(0)
+            )  # 输出 (1, n_stack)
             scores = scores.squeeze(0).cpu().numpy()
-            scores[~valid_actions_mask] = -np.inf  # mask invalid actions
-            action = np.argmax(scores)
+
+            # 扩展 Q 值数组为 n_stack + 1（增加 wait 动作）
+            scores = np.append(scores, -np.inf)
+
+            # 构建 mask，保留合法动作和 wait（wait 永远合法）
+            full_mask = np.append(valid_actions_mask.astype(bool), True)
+            scores[~full_mask] = -np.inf
+
+            action = int(np.argmax(scores))  # 返回最优合法动作
+
         return action
 
     def store(self, order_vec, stack_vecs, action, reward, next_order_vec, next_stack_vecs, done, next_valid_actions_mask):
