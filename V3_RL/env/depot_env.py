@@ -56,24 +56,24 @@ class DepotEnv(gym.Env):
         removed_container = None
 
         if action == self.num_stacks:
-            # 等待（跳过）动作
-            # Check if any valid action existed (to decide penalty severity)
+            # 跳过动作 (等待)
             valid_exists = False
             if order.is_loading:
-                # If any stack could accept this container
+                # 检查是否有可放置的位置
                 for stack in self.depot.stacks:
-                    if len(stack.containers) < self.stack_height and (not stack.containers or stack.top_container().size == order.size):
+                    if len(stack.containers) < self.stack_height and (
+                            not stack.containers or stack.top_container().size == order.size):
                         valid_exists = True
                         break
             else:
-                # If any stack has the container needed for unloading
+                # 检查是否有对应尺寸的集装箱可卸载
                 for stack in self.depot.stacks:
                     top_container = stack.top_container()
                     if top_container and top_container.size == order.size:
                         valid_exists = True
                         break
-            # Assign penalty for skip: harsher if skipping while a valid action was possible
-            reward = -2.0 if valid_exists else -1.0
+            # 根据是否存在可行动作来决定跳过惩罚力度
+            reward = -2.0 if valid_exists else 0.0
         else:
             stack = self.depot.stacks[action]
             if order.is_loading:
@@ -99,16 +99,18 @@ class DepotEnv(gym.Env):
                 # 装载成功奖励
                 reward = 1.0
             else:
-                # 卸载成功，根据idle_time比例计算奖励
-                ratio = removed_container.idle_time / removed_container.grace_period
-                reward = 1.0 - abs(1.0 - ratio)
-                # 确保奖励不低于-1.0
-                reward = max(reward, -1.0)
-                # 若容器已过期（超出grace period），不给予正奖励
+                # 卸载成功奖励
                 if removed_container.is_expired():
-                    reward = min(reward, 0.0)
+                    # 集装箱已过期，惩罚
+                    reward = -1.0
+                else:
+                    # 集装箱未过期，根据idle_time占宽限期比例计算奖励
+                    ratio = removed_container.idle_time / removed_container.grace_period
+                    if ratio > 1.0:
+                        ratio = 1.0  # 理论上未过期时ratio<=1
+                    reward = 1.0 + 2.0 * ratio
 
-        # 如果动作有效或选择了等待，则推进订单
+        # 如果动作有效或选择了等待，则推进到下一个订单
         if success or action == self.num_stacks:
             self.current_order_idx += 1
             if self.current_order_idx < len(self.orders):
@@ -116,12 +118,11 @@ class DepotEnv(gym.Env):
             else:
                 self.current_order = None
 
-        # 增加时间步并更新所有堆场中集装箱的idle time
+        # 增加时间步，并更新所有堆场中集装箱的idle time
         self.current_time += 1
         self.depot.increment_idle_times()
 
         done = (self.current_order_idx >= len(self.orders))
-        # 如果结束，则返回零向量状态，否则获取当前状态
         state = self._get_state() if not done else np.zeros(self.observation_space.shape, dtype=np.float32)
         info = {
             "success": success,

@@ -45,6 +45,8 @@ def train_dqn(
             next_state, reward, done, info = env.step(action)
             total_reward += reward
 
+            # print(f"Ep{episode + 1} Step{env.current_order_idx}: reward={reward:.2f}, info={info}")
+
             if not done:
                 next_order_vec = next_state[:order_input_dim]
                 next_stack_vecs = next_state[order_input_dim:].reshape(num_stacks, stack_input_dim)

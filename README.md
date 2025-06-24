@@ -1,4 +1,4 @@
-## 📁 Project Structure
+**## 📁 Project Structure
 
 This project includes three main folders:
 
