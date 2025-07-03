@@ -132,28 +132,42 @@ class DepotEnv(gym.Env):
         return state, reward, done, info
 
     def _get_state(self):
-        """构造当前环境状态的扁平向量表示。"""
+        """构造当前环境状态的扁平向量表示，加入未来3个订单信息。"""
         order = self.current_order
         # 当前订单特征：尺寸独热编码4维，优先级（除以3归一化），类型（装载=1或卸载=0）
         order_size_onehot = [int(order.size == s) for s in ['20ft', '40ft', '60ft', '80ft']]
         order_vec = order_size_onehot + [order.priority / 3.0, int(order.is_loading)]
+
+        # === 新增：未来3个订单信息 ===
+        future_order_vecs = []
+        for offset in range(1, 4):  # 只看接下来的3单
+            idx = self.current_order_idx + offset
+            if idx < len(self.orders):
+                fo = self.orders[idx]
+                onehot = [int(fo.size == s) for s in ['20ft', '40ft', '60ft', '80ft']]
+                vec = onehot + [fo.priority / 3.0, int(fo.is_loading)]
+            else:
+                vec = [0, 0, 0, 0, 0.0, 0]  # 长度与order_vec一致，全部补零
+            future_order_vecs.extend(vec)
 
         # 堆场状态特征：每个堆栈的顶部箱闲置比例、顶部箱尺寸独热、堆栈当前高度比例
         stack_vecs = []
         for stack in self.depot.stacks:
             top = stack.top_container()
             if top:
-                # 顶部箱存在：idle_time 相对 grace_period 的比例 + 箱尺寸独热编码
-                s = [top.idle_time / top.grace_period] + [int(top.size == sz) for sz in ['20ft', '40ft', '60ft', '80ft']]
+                s = [top.idle_time / top.grace_period] + [int(top.size == sz) for sz in
+                                                          ['20ft', '40ft', '60ft', '80ft']]
             else:
-                # 堆栈空：闲置比率为0，尺寸独热全0
                 s = [0, 0, 0, 0, 0]
-            # 堆栈高度占用比率
             s.append(len(stack.containers) / self.stack_height)
             stack_vecs.extend(s)
-
-        # 将订单特征和所有堆栈特征拼接成状态向量
-        return np.array(order_vec + stack_vecs, dtype=np.float32)
+        # test code can delete
+        # print("[DEBUG][env] state.shape:", np.array(order_vec + future_order_vecs + stack_vecs, dtype=np.float32).shape,
+        #       "len(order_vec):", len(order_vec),
+        #       "len(future_order_vecs):", len(future_order_vecs),
+        #       "len(stack_vecs):", len(stack_vecs))
+        # 拼接所有state
+        return np.array(order_vec + future_order_vecs + stack_vecs, dtype=np.float32)
 
     def get_valid_action_mask(self):
         order = self.current_order
@@ -174,7 +188,7 @@ class DepotEnv(gym.Env):
         return np.array(mask, dtype=bool)
 
     def _compute_state_dim(self):
-        # 订单向量维度：4（尺寸独热）+ 1（优先级）+ 1（类型） = 6
+        # 订单向量维度：4（尺寸）+ 1（优先级）+ 1（类型） = 6
         order_dim = 6
         # 每个堆栈向量维度：1（闲置比率）+ 4（尺寸独热）+ 1（高度比率） = 6
         stack_dim = 6

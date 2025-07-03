@@ -35,19 +35,25 @@ def run_rl_eval(init_depot, orders, model_path, optimal_map):
     depot = deepcopy(init_depot)
     env = DepotEnv(depot=depot, orders=deepcopy(orders))
     order_dim, stack_dim, n_heads, hidden_dim = 6, 6, 4, 128
+    future_order_dim = 18
 
-    agent = AttentionDQNAgent(stack_input_dim=stack_dim, order_input_dim=order_dim,
-                              hidden_dim=hidden_dim, n_heads=n_heads)
+    agent = AttentionDQNAgent(
+        stack_input_dim=stack_dim,
+        order_input_dim=order_dim + future_order_dim,  # 24
+        hidden_dim=hidden_dim,
+        n_heads=n_heads
+    )
     agent.policy_net.load_state_dict(torch.load(model_path))
     agent.policy_net.eval()
 
     for order in orders:
         state = env._get_state()
         order_vec = state[:order_dim]
-        stack_vecs = state[order_dim:].reshape(env.num_stacks, stack_dim)
+        future_order_vecs = state[order_dim:order_dim+future_order_dim]
+        stack_vecs = state[order_dim+future_order_dim:].reshape(env.num_stacks, stack_dim)
 
         valid_actions_mask = env.get_valid_action_mask()
-        action = agent.act(order_vec, stack_vecs, valid_actions_mask)
+        action = agent.act(order_vec, future_order_vecs, stack_vecs, valid_actions_mask)
 
         actual = f"stack {action}" if action < env.num_stacks else "wait"
         expected = optimal_map[order.order_id]
@@ -55,6 +61,7 @@ def run_rl_eval(init_depot, orders, model_path, optimal_map):
         env.step(action)
 
     return env.depot
+
 
 
 def evaluate_metrics(depot, algorithm_func, orders):

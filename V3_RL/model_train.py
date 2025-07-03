@@ -11,7 +11,7 @@ if __name__ == "__main__":
 
     # 返回最优保存信息
     rewards, agent, best_episode, best_reward = train_dqn(
-        episodes=500,
+        episodes=100,
         stack_height=STACK_HEIGHT,
         num_orders=NUM_ORDERS
     )

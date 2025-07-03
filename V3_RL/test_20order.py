@@ -103,5 +103,5 @@ if __name__ == "__main__":
     print_depot_state(init_depot)
     print_depot_order(orders)
 
-    model_path = os.path.join(os.path.dirname(__file__), 'trained_dqn_best.pth')
+    model_path = os.path.join(os.path.dirname(__file__), 'trained_dqn.pth')
     run_full_evaluation(init_depot, orders, optimal_map, model_path)
